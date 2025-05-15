@@ -6,3 +6,4 @@ This project demonstrates how to use RAG to answer questions based on a set of d
 ### **Learnings**
 - **Indexing threshold of a vector database** ![](assets/vector-indexing-threshold.png)
 - **Segment number** ![](assets/segment-number.png)
+- **No indexing threshold** ![](assets/no-vector-indexing.png)
