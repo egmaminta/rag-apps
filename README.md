@@ -5,3 +5,4 @@ This repository contains a collection of applications that utilize Retrieval Aug
 This project demonstrates how to use RAG to answer questions based on a set of documents. The answer is generated using an autoregressive language model interleaved with page annotations, and the relevant documents are retrieved using a vector database.
 - **Learnings**:
     - **Indexing threshold of a vector database** ![](assets/vector-indexing-threshold.png)
+    - **Segment number** ![](assets/segment-number.png)
