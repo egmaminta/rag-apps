@@ -28,7 +28,7 @@ from qdrant_client import QdrantClient
 import streamlit as st
 
 # 1. Create a .env file with the following content: GEMINI_API_KEY=your_api_key
-load_dotenv('api_key.env')
+load_dotenv('../api_key.env')
 
 
 st.set_page_config(
@@ -165,103 +165,104 @@ if prompt := st.chat_input("Ask a question about the document..."):
         pixmap_b64 = ""
         parts = [types.Part(text=prompt)]
         response = st.session_state['chat_session'].send_message(message=parts)
-        tool_call = response.candidates[0].content.parts[0].function_call
 
-        if tool_call.name == "retrieve_info":
-            def retrieve_info(query: str) -> dict[str, str]:
-                """
-                Function to retrieve information from the context bank based on the provided query.
+        try:
+            tool_call = response.candidates[0].content.parts[0].function_call
+            if tool_call.name == 'retrieve_info':
+                def retrieve_info(query: str) -> dict[str, str]:
+                    """
+                    Function to retrieve information from the context bank based on the provided query.
 
-                Args:
-                    query (str): The search prompt to retrieve information from the context bank.
-                
-                Returns:
-                    A dictionary containing the retrieved information and the corresponding pixmaps (highlighted/annotated pages).
-                """
-        
-                rephrased_query = st.session_state['gemini'].models.generate_content(
-                    model='gemini-2.0-flash',
-                    config=types.GenerateContentConfig(
-                        system_instruction=st.session_state['rephraser_system_prompt'],
-                        temperature=0.5,
-                        max_output_tokens=512,
-                    ),
-                    contents=[types.Content(role='user', parts=parts)]
-                )
-                rephrased_query = rephrased_query.text
-                json_extract_pattern = r'```json\n(.*?)\n```'
-                match = re.search(json_extract_pattern, rephrased_query, re.DOTALL)[1]
-                rephrased_query = ast.literal_eval(match)['search_prompt']
-                query_vector = list(st.session_state['embedding_model'].embed([query]))
-                prefetch = Prefetch(
-                    query=query_vector[0],
-                    params=SearchParams(
-                        quantization=QuantizationSearchParams(ignore=False, rescore=True, oversampling=2.0)
+                    Args:
+                        query (str): The search prompt to retrieve information from the context bank.
+                    
+                    Returns:
+                        A dictionary containing the retrieved information and the corresponding pixmaps (highlighted/annotated pages).
+                    """
+            
+                    rephrased_query = st.session_state['gemini'].models.generate_content(
+                        model='gemini-2.0-flash-exp',
+                        config=types.GenerateContentConfig(
+                            system_instruction=st.session_state['rephraser_system_prompt'],
+                            temperature=0.5,
+                            max_output_tokens=512,
+                        ),
+                        contents=[types.Content(role='user', parts=parts)]
                     )
-                )
-                retrieved_ctx = st.session_state['vector_store'].query_points(
-                    collection_name=st.session_state['collection_name'],
-                    prefetch=prefetch, limit=5, with_payload=True
-                ).points
+                    rephrased_query = rephrased_query.text
+                    json_extract_pattern = r'```json\n(.*?)\n```'
+                    match = re.search(json_extract_pattern, rephrased_query, re.DOTALL)[1]
+                    rephrased_query = ast.literal_eval(match)['search_prompt']
+                    query_vector = list(st.session_state['embedding_model'].embed([query]))
+                    prefetch = Prefetch(
+                        query=query_vector[0],
+                        params=SearchParams(
+                            quantization=QuantizationSearchParams(ignore=False, rescore=True, oversampling=2.0)
+                        )
+                    )
+                    retrieved_ctx = st.session_state['vector_store'].query_points(
+                        collection_name=st.session_state['collection_name'],
+                        prefetch=prefetch, limit=5, with_payload=True
+                    ).points
 
-                pixmaps = []
-                contents = []
-                for ctx in retrieved_ctx:
-                    doc_name = ctx.payload['doc_name']
-                    for uploaded_file in st.session_state['uploaded_files']:
-                        if uploaded_file.name == doc_name:
-                            try:
-                                uploaded_file.seek(0, 0)    # Ensure the file pointer is at the beginning
-                                document = pymupdf.open(stream=uploaded_file.read(), filetype="pdf")
-                                page = document[ctx.payload['page_number']]
-                                rect = page.search_for(ctx.payload['content'])
-                                if rect:
-                                    contents.append(ctx.payload['content'])
-                                    for r in rect:
-                                        page.add_highlight_annot(r)
-                                    pixmap = page.get_pixmap(dpi=300)
-                                    out = pixmap.pil_image().convert('RGB')
-                                    io_buffer = BytesIO()
-                                    out.save(io_buffer, format='PNG')
-                                    out_str = base64.b64encode(io_buffer.getvalue()).decode('utf-8')
-                                    out = f'<img src="data:image/png;base64,{out_str}" style="width:65%; height:auto;">'
-                                    pixmaps.append(out)
-                            except Exception as e:
-                                st.error(f"Error processing file {uploaded_file.name}: {e}", icon="❌")
-                            finally:
-                                # Ensure the document is closed if it was successfully opened
-                                if 'document' in locals() and document:
-                                    document.close()
+                    pixmaps = []
+                    contents = []
+                    for ctx in retrieved_ctx:
+                        doc_name = ctx.payload['doc_name']
+                        for uploaded_file in st.session_state['uploaded_files']:
+                            if uploaded_file.name == doc_name:
+                                try:
+                                    uploaded_file.seek(0, 0)    # Ensure the file pointer is at the beginning
+                                    document = pymupdf.open(stream=uploaded_file.read(), filetype="pdf")
+                                    page = document[ctx.payload['page_number']]
+                                    rect = page.search_for(ctx.payload['content'])
+                                    if rect:
+                                        contents.append(ctx.payload['content'])
+                                        for r in rect:
+                                            page.add_highlight_annot(r)
+                                        pixmap = page.get_pixmap(dpi=300)
+                                        out = pixmap.pil_image().convert('RGB')
+                                        io_buffer = BytesIO()
+                                        out.save(io_buffer, format='PNG')
+                                        out_str = base64.b64encode(io_buffer.getvalue()).decode('utf-8')
+                                        out = f'<img src="data:image/png;base64,{out_str}" style="width:65%; height:auto;">'
+                                        pixmaps.append(out)
+                                except Exception as e:
+                                    st.error(f"Error processing file {uploaded_file.name}: {e}", icon="❌")
+                                finally:
+                                    # Ensure the document is closed if it was successfully opened
+                                    if 'document' in locals() and document:
+                                        document.close()
 
-                return {
-                    'pixmaps': pixmaps,
-                    'contents': contents
-                }
+                    return {
+                        'pixmaps': pixmaps,
+                        'contents': contents
+                    }
 
-            # Call the function to retrieve information from the context bank
-            with st.spinner('Retrieving information from the context bank...'):
-                result = retrieve_info(**tool_call.args)
-                contents = result.get('contents', [])
-                pixmaps = result.get('pixmaps', [])
-                contents_str = ""
+                # Call the function to retrieve information from the context bank
+                with st.spinner('Retrieving information from the context bank...'):
+                    result = retrieve_info(**tool_call.args)
+                    contents = result.get('contents', [])
+                    pixmaps = result.get('pixmaps', [])
+                    contents_str = ""
 
-                for rel_rank, content in enumerate(contents):
-                    contents_str += f"RANK (based on relevance): {rel_rank + 1}\n"
-                    contents_str += content
-                    contents_str += "-" * 50 + "\n"
+                    for rel_rank, content in enumerate(contents):
+                        contents_str += f"RANK (based on relevance): {rel_rank + 1}\n"
+                        contents_str += content
+                        contents_str += "-" * 50 + "\n"
 
-                for pixmap in pixmaps:
-                    st.markdown(pixmap, unsafe_allow_html=True)
-                    pixmap_b64 += pixmap
+                    for pixmap in pixmaps:
+                        st.markdown(pixmap, unsafe_allow_html=True)
+                        pixmap_b64 += pixmap
 
-                function_response_part = types.Part.from_function_response(
-                    name=tool_call.name,
-                    response={'result': contents_str},
-                )
-                parts.append(function_response_part)
-                response = st.session_state['chat_session'].send_message(message=parts)
-                st.markdown(response.text)
-        else:
+                    function_response_part = types.Part.from_function_response(
+                        name=tool_call.name,
+                        response={'result': contents_str},
+                    )
+                    parts.append(function_response_part)
+                    response = st.session_state['chat_session'].send_message(message=parts)
+                    st.markdown(response.text)
+        except Exception as e:
             st.markdown(response.text)
 
     content = pixmap_b64 + response.text if pixmap_b64 else response.text
